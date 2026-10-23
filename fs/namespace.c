@@ -713,7 +713,11 @@ vfs_kern_mount(struct file_system_type *type, int flags, const char *name, void 
 
 	root = mount_fs(type, flags, name, &mnt->mnt, data);
 	if (IS_ERR(root)) {
-		kfree(mnt->mnt.data);
+		/* free_vfsmnt() already frees mnt->mnt.data; freeing it here as
+		 * well was a double-free that corrupted the SLUB freelist
+		 * (manifested as NULL-deref panics in unrelated kmalloc callers,
+		 * e.g. cpufreq_interactive store_target_loads, after a failed
+		 * sdcardfs mount with unsupported options). */
 		free_vfsmnt(mnt);
 		return ERR_CAST(root);
 	}

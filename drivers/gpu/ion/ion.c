@@ -1829,6 +1829,22 @@ void ion_iovmm_unmap(struct dma_buf_attachment *attachment, dma_addr_t iova)
 		if ((dev == iovm_map->dev) && (iova == iovm_map->iova)) {
 			if (WARN_ON(iovm_map->map_cnt-- == 0))
 				iovm_map->map_cnt = 0;
+			/*
+			 * MFC v5.1 can only address a 256MB IOVA region.
+			 * Keeping the mapping cached for the whole dmabuf
+			 * lifetime leaks that region on every buffer ever
+			 * imported (camera/video sessions fill it up over
+			 * time until QBUF fails with ENOMEM). Release it
+			 * once the last mapping of this buffer drops.
+			 * Other devices keep the sticky cache: their IOVM
+			 * regions are GB-sized and re-mapping is saved.
+			 */
+			if (iovm_map->map_cnt == 0 &&
+					!strcmp(dev_name(dev), "s5p-mfc")) {
+				list_del(&iovm_map->list);
+				iovmm_unmap(dev, iovm_map->iova);
+				kfree(iovm_map);
+			}
 			mutex_unlock(&buffer->lock);
 			return;
 		}
